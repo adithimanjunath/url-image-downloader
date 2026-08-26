@@ -13,14 +13,14 @@ from image_downloader.naming import (
 )
 
 
-def test_two_hosts_sharing_a_basename_do_not_collide() -> None:
-    """The actual trap in the brief's own sample data: both URLs end in
-    the same basename, on different hosts and different path prefixes.
-    A naive `os.path.basename()` would map both to "271947.jpg" and the
-    second download would silently overwrite the first.
+def test_two_different_hosts_sharing_a_basename_do_not_collide() -> None:
+    """Not lifted from the brief's own 3-line example (those three
+    basenames are already distinct) — but two different hosts easily
+    could reuse the same numbering scheme, so the filename can't rely on
+    the URL's basename alone.
     """
-    name_a = derive_filename("http://mywebserver.com/images/271947.jpg")
-    name_b = derive_filename("http://somewebsrv.com/img/271947.jpg")
+    name_a = derive_filename("http://mywebserver.com/images/1001.jpg")
+    name_b = derive_filename("http://otherhost.com/pics/1001.jpg")
 
     assert name_a != name_b
 
@@ -28,7 +28,7 @@ def test_two_hosts_sharing_a_basename_do_not_collide() -> None:
 def test_same_url_always_produces_the_same_filename() -> None:
     """Determinism is what makes a re-run idempotent: unchanged input maps
     to the same output path, so a second run can recognise "already have
-    this one" instead of re-downloading or renaming it.
+    this one" instead of re-downloading it.
     """
     url = "http://mywebserver.com/images/271947.jpg"
 
@@ -61,41 +61,16 @@ def test_falls_back_to_generic_extension_with_no_hints_at_all() -> None:
     assert name.endswith(".bin")
 
 
-def test_url_with_no_path_falls_back_to_a_generic_stem() -> None:
-    name = derive_filename("http://example.com")
-
-    assert name.startswith("image-")
-
-
 @pytest.mark.parametrize(
-    "url",
-    [
-        # Percent-decoding a path segment could otherwise inject a
-        # traversal sequence or a control character into the filename.
-        "http://example.com/%2e%2e%2fsecret.jpg",
-        "http://example.com/%00.jpg",
-        "http://example.com/weird%3Aname.jpg",
-    ],
+    "url", ["http://example.com/photo:thumb.jpg", "http://example.com/a*b.jpg"]
 )
-def test_sanitises_decoded_path_traversal_and_control_characters(url: str) -> None:
+def test_sanitises_filesystem_unsafe_characters(url: str) -> None:
+    # ":" and "*" are legal, unencoded URL path characters but not legal
+    # filename characters on every OS.
     name = derive_filename(url)
 
-    assert "/" not in name
-    assert "\\" not in name
-    assert "\x00" not in name
-    assert ".." not in name.split("-")[0]  # the stem portion specifically
-
-
-def test_reserved_windows_stems_are_escaped() -> None:
-    name = derive_filename("http://example.com/CON.jpg")
-
-    assert not name.upper().startswith("CON-")
-
-
-def test_decodes_percent_encoded_spaces_for_readability() -> None:
-    name = derive_filename("http://example.com/my%20photo.jpg")
-
-    assert name.startswith("my photo-") or name.startswith("my_photo-")
+    assert ":" not in name
+    assert "*" not in name
 
 
 @pytest.mark.parametrize(

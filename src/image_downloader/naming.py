@@ -1,10 +1,9 @@
 """Derive a safe, deterministic, collision-free filename from a URL.
 
-Two different hosts routinely reuse the same basename convention (this
-sample data does exactly that: .../images/271947.jpg on one host and
-.../img/271947.jpg on another) so a filename derived from the URL alone
-must include something host- and path-specific, or one download silently
-overwrites another.
+A filename built only from a URL's last path segment breaks the moment
+two different hosts reuse the same naming convention (a common pattern:
+sequential IDs, CDN mirrors), so the filename here also depends on the
+full URL, not just its final segment.
 """
 
 from __future__ import annotations
@@ -13,34 +12,23 @@ import hashlib
 import mimetypes
 import re
 from pathlib import Path, PurePosixPath
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
 _HASH_LENGTH = 8
 _MAX_STEM_LENGTH = 60
 _FALLBACK_STEM = "image"
 _FALLBACK_EXTENSION = ".bin"
 
-# Illegal on Windows, plus control characters (a decoded URL segment can
-# contain either, e.g. a path component of "%00" or "%3F").
-_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-
-# Reserved on Windows regardless of extension (CON.jpg is still invalid).
-_WINDOWS_RESERVED_STEMS = frozenset(
-    {"CON", "PRN", "AUX", "NUL"}
-    | {f"COM{i}" for i in range(1, 10)}
-    | {f"LPT{i}" for i in range(1, 10)}
-)
+# A few characters that are legal in a URL path segment but not in a
+# filename (e.g. "photo:thumb.jpg" is a valid URL path, not a valid
+# Windows filename).
+_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
 
 
 def _sanitise_stem(raw_stem: str) -> str:
-    """Make `raw_stem` safe to use as a filename component on any OS."""
-    stem = _UNSAFE_CHARS.sub("_", raw_stem).strip(" .")
-    stem = stem[:_MAX_STEM_LENGTH]
-    if not stem:
-        stem = _FALLBACK_STEM
-    if stem.upper() in _WINDOWS_RESERVED_STEMS:
-        stem = f"_{stem}"
-    return stem
+    """Make `raw_stem` safe to use as a filename component."""
+    stem = _UNSAFE_CHARS.sub("_", raw_stem).strip(" .")[:_MAX_STEM_LENGTH]
+    return stem or _FALLBACK_STEM
 
 
 def _resolve_extension(url: str, content_type: str | None) -> str:
@@ -85,8 +73,7 @@ def derive_filename(url: str, content_type: str | None = None) -> str:
     same URL always maps to the same filename on a re-run — which is
     what lets a re-run skip files it already downloaded.
     """
-    decoded_path = unquote(urlsplit(url).path)
-    raw_stem = PurePosixPath(decoded_path).stem
+    raw_stem = PurePosixPath(urlsplit(url).path).stem
     stem = _sanitise_stem(raw_stem) if raw_stem else _FALLBACK_STEM
 
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:_HASH_LENGTH]
@@ -97,10 +84,10 @@ def derive_filename(url: str, content_type: str | None = None) -> str:
 def resolve_output_path(output_dir: Path, filename: str) -> Path:
     """Join `filename` onto `output_dir`, guaranteed not to escape it.
 
-    `derive_filename` cannot itself produce a path separator or a ".."
-    component, so this can't currently be triggered — it exists as the
-    cheap, final assertion that a write can never land outside the
-    intended directory, even if that guarantee above ever changes.
+    `derive_filename` cannot itself produce a path separator, so this
+    can't currently be triggered — it exists as the cheap, final
+    assertion that a write can never land outside the intended
+    directory, even if that guarantee above ever changes.
     """
     resolved_dir = output_dir.resolve()
     candidate = (resolved_dir / filename).resolve()
