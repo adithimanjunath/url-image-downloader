@@ -69,8 +69,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests bind to localhost and use hardcoded fixture data by design.
-"tests/**" = ["S104", "S105", "S106", "ARG001", "ARG002"]
+# S603: subprocess call in the entry-point e2e test — fully-controlled
+# arguments, not untrusted input. ARG002: MockTransport handlers must
+# accept a request argument even when they ignore it.
+"tests/**" = ["S603", "ARG002"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -81,12 +83,16 @@ files = ["src", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --strict-config"
-markers = ["e2e: end-to-end tests that invoke the installed console script"]
+addopts = "-ra --strict-config"
 
 [tool.coverage.run]
 source = ["image_downloader"]
 branch = true
+# __main__.py is a three-line shim exercised only via a real subprocess
+# (test_installed_entry_point_runs_as_a_real_subprocess); coverage.py
+# can't see across that process boundary without extra machinery that
+# isn't worth adding for this little code.
+omit = ["*/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
