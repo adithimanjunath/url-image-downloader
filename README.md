@@ -83,7 +83,7 @@ persistence. Each is reasonable on a long-lived service; none are needed
 here.
 
 **One limitation stated rather than hidden:** `download_one()` relies on its
-caller to deduplicate URLs first (which `urls.py` does) — two concurrent
+caller to deduplicate URLs first (which `urls.py` does),  two concurrent
 calls for the *same* URL would race on the same temp file. Not reachable
 through this CLI today, but worth knowing if the function is ever reused
 elsewhere.
